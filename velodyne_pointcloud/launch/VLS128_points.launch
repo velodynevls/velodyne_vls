@@ -15,6 +15,7 @@
   <arg name="min_range" default="0.4" />
   <arg name="pcap" default=" " />
   <arg name="port" default="2368" />
+  <arg name="npackets" default="625" />
   <arg name="read_fast" default="false" />
   <arg name="read_once" default="false" />
   <arg name="repeat_delay" default="0.0" />
@@ -28,6 +29,7 @@
     <arg name="model" value="VLS128"/>
     <arg name="pcap" value="$(arg pcap)"/>
     <arg name="port" value="$(arg port)"/>
+    <arg name="npackets" value="$(arg npackets)"/>
     <arg name="read_fast" value="$(arg read_fast)"/>
     <arg name="read_once" value="$(arg read_once)"/>
     <arg name="repeat_delay" value="$(arg repeat_delay)"/>

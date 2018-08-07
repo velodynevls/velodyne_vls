@@ -2,7 +2,7 @@
  *  Copyright (C) 2007 Austin Robot Technology, Patrick Beeson
  *  Copyright (C) 2009-2012 Austin Robot Technology, Jack O'Quin
  *  Copyright (C) 2017, Velodyne LiDAR INC., Algorithms and Signal Processing Group
- * 
+ *
  *  License: Modified BSD Software License Agreement
  *
  *  $Id$
@@ -46,8 +46,8 @@ namespace velodyne_driver
               value += pow(2, indexCounter);
           }
           indexCounter++;
-      } 
-      return value;   
+      }
+      return value;
   }
 
   double computeTimeStamp(velodyne_msgs::VelodyneScanPtr scan, int index){
@@ -77,7 +77,7 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
   private_nh.param("model", config_.model, std::string("64E"));
   double packet_rate;                   // packet frequency (Hz)
   std::string model_full_name;
-  if ((config_.model == "64E_S2") || 
+  if ((config_.model == "64E_S2") ||
       (config_.model == "64E_S2.1"))    // generates 1333312 points per second
     {                                   // 1 packet holds 384 points
       packet_rate = 3472.17;            // 1333312 / 384
@@ -95,14 +95,14 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
     }
  else if (config_.model == "VLP32C")
     {
-      packet_rate = 1507; // 12 groups of 32 firings where a pair of 2 firings corresponds to 55.296us -> 1/(12*55.296us) 
+      packet_rate = 1507; // 12 groups of 32 firings where a pair of 2 firings corresponds to 55.296us -> 1/(12*55.296us)
       model_full_name = "VLP-32C";
-    }  
+    }
  else if (config_.model == "VLS128")
     {
       packet_rate = 1507; // 3 groups of 128 firings where a set of 8 firings corresponds to 55.296us -> 1/(12*55.296us) 
       model_full_name = "VLS-128";
-    }  
+    }
   else if (config_.model == "VLP16")
     {
       packet_rate = 754;             // 754 Packets/Second for Last or Strongest mode 1508 for dual (VLP-16 User Manual)
@@ -118,7 +118,7 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
   private_nh.param("rpm", config_.rpm, 600.0);
   ROS_INFO_STREAM(deviceName << " rotating at " << config_.rpm << " RPM");
   double frequency = (config_.rpm / 60.0);     // expected Hz rate
-  
+
 
   // default number of packets for each scan is a single revolution
   // (fractions rounded up)

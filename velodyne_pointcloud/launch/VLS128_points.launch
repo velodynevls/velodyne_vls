@@ -44,8 +44,4 @@
     <arg name="min_range" value="$(arg min_range)"/>
   </include>
 
-  <group if="$(arg rviz)">
-        <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find lidarslam)/rviz/lidar_slam.rviz"/>
-  </group>
-
 </launch>

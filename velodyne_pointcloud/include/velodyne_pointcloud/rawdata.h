@@ -68,20 +68,29 @@ namespace velodyne_rawdata
   /** @todo make this work for both big and little-endian machines */
   static const uint16_t UPPER_BANK = 0xeeff;
   static const uint16_t LOWER_BANK = 0xddff;
-  
+
   /** Special Definitions for VLP16 support **/
   static const int    VLP16_NUM_SEQS_PER_BLOCK  = 2;
   static const int    VLP16_NUM_CHANS_PER_SEQ   = 16;
   static const float  VLP16_BLOCK_TDURATION     = (VLP16_NUM_SEQS_PER_BLOCK * SEQ_TDURATION);
- 
+
   /** Special Definitions for HDL32 support **/
   static const float  HDL32_CHANNEL_TDURATION  =   1.152f;   // [µs] From Application Note: HDL-32E Packet Structure and Timing Defition
   static const float  HDL32_SEQ_TDURATION      =  46.080f;   // [µs] Sequence is a set of laser firings including recharging
-  
-  /** Special Definition for VLS128 support **/
+
+  /** Special Definitions for VLS128 support **/
+  // These are used to detect which bank of 32 lasers is in this block
+  static const uint16_t VLS128_BANK_1 = 0xeeff;
+  static const uint16_t VLS128_BANK_2 = 0xddff;
+  static const uint16_t VLS128_BANK_3 = 0xccff;
+  static const uint16_t VLS128_BANK_4 = 0xbbff;
+
+  static const float  VLS128_CHANNEL_TDURATION  =  2.665f;  // [µs] Channels corresponds to one laser firing
+  static const float  VLS128_SEQ_TDURATION      =  53.3f;   // [µs] Sequence is a set of laser firings including recharging
+
   static const int VLS128_NUM_CHANS_PER_BLOCK = 128;
   static const int VLS128_BLOCK_DATA_SIZE = VLS128_NUM_CHANS_PER_BLOCK * CHANNEL_SIZE;
-  
+
   /** \brief Raw Velodyne data block.
    *
    *  Each block contains data from either the upper or lower laser
@@ -128,7 +137,7 @@ namespace velodyne_rawdata
   {
     raw_block_t blocks[NUM_BLOCKS_PER_PACKET];
     uint16_t revolution;
-    uint8_t status[PACKET_STATUS_SIZE]; 
+    uint8_t status[PACKET_STATUS_SIZE];
   } raw_packet_t;
 
   /** \brief Velodyne data conversion class */
@@ -152,11 +161,11 @@ namespace velodyne_rawdata
      */
     int setup(ros::NodeHandle private_nh);
 
-    /** \brief Set up for data processing offline. 
+    /** \brief Set up for data processing offline.
       * Performs the same initialization as in setup, in the abscence of a ros::NodeHandle.
-      * this method is useful if unpacking data directly from bag files, without passing 
+      * this method is useful if unpacking data directly from bag files, without passing
       * through a communication overhead.
-      * 
+      *
       * @param calibration_file path to the calibration file
       * @param max_range_ cutoff for maximum range
       * @param min_range_ cutoff for minimum range
@@ -167,7 +176,7 @@ namespace velodyne_rawdata
 
     void unpack(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc);
 //    void unpack(const velodyne_msgs::VelodynePacket &pkt, XYZIRBPointCloud &pc);
-    
+
     void setParameters(double min_range, double max_range, double view_direction,
                        double view_width);
 
@@ -180,21 +189,21 @@ namespace velodyne_rawdata
       double min_range;                ///< minimum range to publish
       int min_angle;                   ///< minimum angle to publish
       int max_angle;                   ///< maximum angle to publish
-      
+
       double tmp_min_angle;
       double tmp_max_angle;
     } Config;
     Config config_;
     float previous_block_corrected_azimuth;    // for support of different scan patterns
-    float previous_block_corrected_elevation;  // record the scan profile endpoint in previous packet 
+    float previous_block_corrected_elevation;  // record the scan profile endpoint in previous packet
 
-    /** 
+    /**
      * Calibration file
      */
     velodyne_pointcloud::Calibration calibration_;
     float sin_rot_table_[ROTATION_MAX_UNITS];
     float cos_rot_table_[ROTATION_MAX_UNITS];
-    /** add private function to handle each sensor **/ 
+    /** add private function to handle each sensor **/
     void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc);
     void unpack_vlp32(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc);
     void unpack_hdl32(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc);
@@ -207,7 +216,7 @@ namespace velodyne_rawdata
                      , float &x_coord
                      , float &y_coord
                      , float &z_coord
-                     ); 
+                     );
 
     /** in-line test whether a point is in range */
     bool pointInRange(float range)

@@ -665,6 +665,26 @@ namespace velodyne_rawdata
       }
 #endif
 
+      int bank_origin = 0;
+      // Used to detect which bank of 32 lasers is in this block
+      switch (raw->blocks[block].header) {
+        case VLS128_BANK_1:
+          bank_origin = 0;
+          break;
+        case VLS128_BANK_2:
+          bank_origin = 32;
+          break;
+        case VLS128_BANK_3:
+          bank_origin = 64;
+          break;
+        case VLS128_BANK_4:
+          bank_origin = 96;
+          break;
+        default:
+          // ignore packets with mangled or otherwise different contents
+          return; // bad packet: skip the rest
+      }
+
       // Calculate difference between current and next block's azimuth angle.
       if (block == 0) {
         azimuth = raw->blocks[block].rotation;
@@ -685,41 +705,55 @@ namespace velodyne_rawdata
         azimuth >= config_.min_angle && azimuth <= config_.max_angle)
         || (config_.min_angle > config_.max_angle)) {
 
-	for (int j = 0, k = 0; j < NUM_CHANS_PER_BLOCK; j++, k+=CHANNEL_SIZE){
-          uint8_t group = block % 4;
-	  uint8_t chan_id = j +   group * 32;
-	  uint8_t firing_order = chan_id/8;
-          firing_order = 0;
-	  velodyne_pointcloud::LaserCorrection &corrections = calibration_.laser_corrections[chan_id];
+        for (int j = 0, k = 0; j < NUM_CHANS_PER_BLOCK; j++, k+=CHANNEL_SIZE){
+          // distance extraction
+          union two_bytes tmp;
+          tmp.bytes[0] = raw->blocks[block].data[k];
+          tmp.bytes[1] = raw->blocks[block].data[k+1];
+          distance = tmp.uint * VLP32_DISTANCE_RESOLUTION;
 
-	  // distance extraction
-	  union two_bytes tmp;
-	  tmp.bytes[0] = raw->blocks[block].data[k];
-	  tmp.bytes[1] = raw->blocks[block].data[k+1];
-	  distance = (float)tmp.uint * VLP32_DISTANCE_RESOLUTION;
-	  distance += corrections.dist_correction;
+          if (pointInRange(distance)) {
+            laser_number = j + bank_origin;   // Offset the laser in this block by which block it's in
+            firing_order = laser_number / 8;  // VLS-128 fires 8 lasers at a time
 
-	  if (pointInRange(distance)) {
-	    intensity = (float)raw->blocks[block].data[k+2];
+            velodyne_pointcloud::LaserCorrection &corrections = calibration_.laser_corrections[laser_number];
 
-	    /** correct for the laser rotation as a function of timing during the firings **/
-	    azimuth_corrected_f = azimuth + (azimuth_diff * (firing_order*CHANNEL_TDURATION) / SEQ_TDURATION);
-	    azimuth_corrected = ((uint16_t)round(azimuth_corrected_f)) % 36000;
+            /** correct for the laser rotation as a function of timing during the firings **/
+            azimuth_corrected_f = azimuth + (azimuth_diff * (firing_order*CHANNEL_TDURATION) / SEQ_TDURATION);
+            azimuth_corrected = ((uint16_t)round(azimuth_corrected_f)) % 36000;
 
-	    // apply calibration file and convert polar coordinates to Euclidean XYZ
-	    compute_xyzi(chan_id, azimuth_corrected, distance, intensity, x_coord, y_coord, z_coord);
+            // convert polar coordinates to Euclidean XYZ
+            cos_vert_angle = corrections.cos_vert_correction;
+            sin_vert_angle = corrections.sin_vert_correction;
+            cos_rot_correction = corrections.cos_rot_correction;
+            sin_rot_correction = corrections.sin_rot_correction;
 
-	    // append this point to the cloud
-	    VPoint point;
-	    point.ring = corrections.laser_ring;
-	    point.x = x_coord;
-	    point.y = y_coord;
-	    point.z = z_coord;
-	    point.intensity = intensity;
+            // cos(a-b) = cos(a)*cos(b) + sin(a)*sin(b)
+            // sin(a-b) = sin(a)*cos(b) - cos(a)*sin(b)
+            cos_rot_angle =
+              cos_rot_table_[azimuth_corrected] * cos_rot_correction +
+              sin_rot_table_[azimuth_corrected] * sin_rot_correction;
+            sin_rot_angle =
+              sin_rot_table_[azimuth_corrected] * cos_rot_correction -
+              cos_rot_table_[azimuth_corrected] * sin_rot_correction;
 
-	    pc.points.push_back(point);
-	    ++pc.width;
-	  }
+            // Compute the distance in the xy plane (w/o accounting for rotation)
+            xy_distance = distance * cos_vert_angle;
+
+            /** Use standard ROS coordinate system (right-hand rule) */
+            // append this point to the cloud
+            VPoint point;
+            point.ring = corrections.laser_ring;
+            point.x = xy_distance * cos_rot_angle;    // velodyne y
+            point.y = -(xy_distance * sin_rot_angle); // velodyne x
+            point.z = distance * sin_vert_angle;      // velodyne z
+
+            // Intensity extraction
+            point.intensity = raw->blocks[block].data[k + 2];
+
+            pc.points.push_back(point);
+            ++pc.width;
+          }
         }
       }
     }

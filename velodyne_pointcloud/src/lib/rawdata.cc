@@ -632,6 +632,13 @@ namespace velodyne_rawdata
     uint16_t azimuth, azimuth_next, azimuth_corrected;
     float x_coord, y_coord, z_coord;
     float distance, intensity;
+
+    float cos_vert_angle, sin_vert_angle, cos_rot_correction, sin_rot_correction;
+    float cos_rot_angle, sin_rot_angle;
+    float xy_distance;
+
+    uint8_t laser_number, firing_order;
+
     typedef struct vls128_raw_block
     {
       uint16_t header;        ///< UPPER_BANK or LOWER_BANK

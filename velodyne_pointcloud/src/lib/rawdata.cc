@@ -719,7 +719,7 @@ namespace velodyne_rawdata
             velodyne_pointcloud::LaserCorrection &corrections = calibration_.laser_corrections[laser_number];
 
             /** correct for the laser rotation as a function of timing during the firings **/
-            azimuth_corrected_f = azimuth + (azimuth_diff * (firing_order*CHANNEL_TDURATION) / SEQ_TDURATION);
+            azimuth_corrected_f = azimuth + (azimuth_diff * (firing_order*VLS128_CHANNEL_TDURATION) / VLS128_SEQ_TDURATION);
             azimuth_corrected = ((uint16_t)round(azimuth_corrected_f)) % 36000;
 
             // convert polar coordinates to Euclidean XYZ

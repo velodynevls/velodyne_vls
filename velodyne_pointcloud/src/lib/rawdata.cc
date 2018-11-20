@@ -64,7 +64,7 @@ namespace velodyne_rawdata
     config_.tmp_max_angle = fmod(fmod(config_.tmp_max_angle,2*M_PI) + 2*M_PI,2*M_PI);
 
     //converting into the hardware velodyne ref (negative yaml and degrees)
-    //adding 0.5 perfomrs a centered double to int conversion
+    //adding 0.5 performs a centered double to int conversion
     config_.min_angle = 100 * (2*M_PI - config_.tmp_min_angle) * 180 / M_PI + 0.5;
     config_.max_angle = 100 * (2*M_PI - config_.tmp_max_angle) * 180 / M_PI + 0.5;
     if (config_.min_angle == config_.max_angle)
@@ -105,6 +105,11 @@ namespace velodyne_rawdata
       cos_rot_table_[rot_index] = cosf(rotation);
       sin_rot_table_[rot_index] = sinf(rotation);
     }
+
+    for (uint8_t i = 0; i < 16; i++) {
+      vls_128_laser_azimuth_cache[i] = (VLS128_CHANNEL_TDURATION / VLS128_SEQ_TDURATION) * (i + i / 8);
+    }
+
    return 0;
   }
 
@@ -125,43 +130,25 @@ namespace velodyne_rawdata
 
       calibration_.read(config_.calibrationFile);
       if (!calibration_.initialized) {
-	  ROS_ERROR_STREAM("Unable to open calibration file: " <<
-		  config_.calibrationFile);
-	  return -1;
+        ROS_ERROR_STREAM("Unable to open calibration file: " <<
+            config_.calibrationFile);
+        return -1;
       }
 
       // Set up cached values for sin and cos of all the possible headings
       for (uint16_t rot_index = 0; rot_index < ROTATION_MAX_UNITS; ++rot_index) {
-	  float rotation = angles::from_degrees(ROTATION_RESOLUTION * rot_index);
-	  cos_rot_table_[rot_index] = cosf(rotation);
-	  sin_rot_table_[rot_index] = sinf(rotation);
+        float rotation = angles::from_degrees(ROTATION_RESOLUTION * rot_index);
+        cos_rot_table_[rot_index] = cosf(rotation);
+        sin_rot_table_[rot_index] = sinf(rotation);
       }
+
+      for (uint8_t i = 0; i < 16; i++) {
+        vls_128_laser_azimuth_cache[i] = (VLS128_CHANNEL_TDURATION / VLS128_SEQ_TDURATION) * (i + i / 8);
+      }
+
       return 0;
   }
 
-#if 0
-  void RawData::unpack(const velodyne_msgs::VelodynePacket &pkt,
-                       XYZIRBPointCloud &pc)
-  {
-    ROS_DEBUG_STREAM("Received packet, time: " << pkt.stamp);
-    if (pkt.data[1205] == 34) {
-      unpack_vlp16(pkt, pc);
- //     std::cerr<<" current motion compensation code only supports VLP32C!" <<std::endl;
-    }
-    else if (pkt.data[1205] == 40) { // VLP32 C
-      unpack_vlp32(pkt, pc);
-    }
-    else if (pkt.data[1205] == 33) { // HDL-32E (NOT TESTED YET)
-      unpack_hdl32(pkt, pc);
-  ///   std::cerr<<" current motion compensation code only supports VLP32C!" <<std::endl;
-    }
-    else { // HDL-64E without azimuth compensation from the firing order
-      unpack_hdl64(pkt, pc);
-   //   std::cerr<<" current motion compensation code only supports VLP32C!" <<std::endl;
-    }
-  }
-
-#endif
 
   /** @brief convert raw packet to point cloud
    *
@@ -173,10 +160,10 @@ namespace velodyne_rawdata
   {
     ROS_DEBUG_STREAM("Received packet, time: " << pkt.stamp);
     // std::cerr << "Sensor ID = " << (unsigned int)(pkt.data[1205]) << std::endl;
-    if (pkt.data[1205] == 34) {  // VLP16
+    if (pkt.data[1205] == 34 || pkt.data[1205] == 36) { // VLP-16 or hi-res
       unpack_vlp16(pkt, pc);
     }
-    else if (pkt.data[1205] == 40) { // VLP32 C
+    else if (pkt.data[1205] == 40) { // VLP-32C
       unpack_vlp32(pkt, pc);
     }
     else if (pkt.data[1205] == 33) { // HDL-32E (NOT TESTED YET)
@@ -624,117 +611,125 @@ namespace velodyne_rawdata
    *  @param pkt raw packet to unpack
    *  @param pc shared pointer to point cloud (points are appended)
    */
-  void RawData::unpack_vls128(const velodyne_msgs::VelodynePacket &pkt,
-                             VPointCloud &pc)
-  {
+  void RawData::unpack_vls128(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc) {
     float azimuth_diff, azimuth_corrected_f;
     float last_azimuth_diff = 0;
     uint16_t azimuth, azimuth_next, azimuth_corrected;
     float x_coord, y_coord, z_coord;
-    float distance, intensity;
-    typedef struct vls128_raw_block
-    {
-      uint16_t header;        ///< UPPER_BANK or LOWER_BANK
-      uint16_t rotation;      ///< 0-35999, divide by 100 to get degrees
-      uint8_t  data[VLS128_BLOCK_DATA_SIZE];
-    } vls128_raw_block_t;
-    typedef struct vls128_raw_packet
-    {
-      vls128_raw_block_t blocks[3];
-      uint16_t revolution;
-      uint8_t status[PACKET_STATUS_SIZE];
-    } vls128_raw_packet_t;
-
+    float distance;
     const raw_packet_t *raw = (const raw_packet_t *) &pkt.data[0];
-    // std::cerr << " Inside unpack_vls128 " << std::endl;
-    for (int block = 0;
-         block < 12;
-         block++
-        ) {
+    union two_bytes tmp;
 
-#if 0
-      // ignore packets with mangled or otherwise different contents
-      if (UPPER_BANK != raw->blocks[block].header) {
-        // Do not flood the log with messages, only issue at most one
-        // of these warnings per minute.
-        std::cerr << "skipping invalid VLS128 packet ... block " << block << " header value is " << raw->blocks[block].header << std::endl;
-        ROS_WARN_STREAM_THROTTLE(60, "skipping invalid VLS128 packet: block "
-                                 << block << " header value is "
-                                 << raw->blocks[block].header);
-        return;                         // bad packet: skip the rest
+    float cos_vert_angle, sin_vert_angle, cos_rot_correction, sin_rot_correction;
+    float cos_rot_angle, sin_rot_angle;
+    float xy_distance;
+
+    uint8_t laser_number, firing_order;
+
+    for (int block = 0; block < NUM_BLOCKS_PER_PACKET; block++) {
+      // cache block for use
+      const raw_block_t &current_block = raw->blocks[block];
+
+      int bank_origin = 0;
+      // Used to detect which bank of 32 lasers is in this block
+      switch (current_block.header) {
+        case VLS128_BANK_1:
+          bank_origin = 0;
+          break;
+        case VLS128_BANK_2:
+          bank_origin = 32;
+          break;
+        case VLS128_BANK_3:
+          bank_origin = 64;
+          break;
+        case VLS128_BANK_4:
+          bank_origin = 96;
+          break;
+        default:
+          // ignore packets with mangled or otherwise different contents
+          // Do not flood the log with messages, only issue at most one
+          // of these warnings per minute.
+          ROS_WARN_STREAM_THROTTLE(60, "skipping invalid VLS-128 packet: block "
+                    << block << " header value is "
+                    << raw->blocks[block].header);
+          return; // bad packet: skip the rest
       }
-#endif
 
       // Calculate difference between current and next block's azimuth angle.
       if (block == 0) {
-        azimuth = raw->blocks[block].rotation;
+        azimuth = current_block.rotation;
       } else {
         azimuth = azimuth_next;
       }
-      if (block < (NUM_BLOCKS_PER_PACKET-1)){
-        azimuth_next = raw->blocks[block+1].rotation;
-        azimuth_diff = (float)((36000 + azimuth_next - azimuth)%36000);
+      if (block < (NUM_BLOCKS_PER_PACKET - 1)) {
+        // Get the next block rotation to calculate how far we rotate between blocks
+        azimuth_next = raw->blocks[block + 1].rotation;
+
+        // Finds the difference between two sucessive blocks
+        azimuth_diff = (float)((36000 + azimuth_next - azimuth) % 36000);
+
+        // This is used when the last block is next to predict rotation amount
         last_azimuth_diff = azimuth_diff;
       } else {
+        // This makes the assumption the difference between the last block and the next packet is the
+        // same as the last to the second to last.
+        // Assumes RPM doesn't change much between blocks
         azimuth_diff = last_azimuth_diff;
       }
 
-      /*condition added to avoid calculating points which are not
-        in the interesting defined area (min_angle < area < max_angle)*/
-      if ((config_.min_angle < config_.max_angle &&
-        azimuth >= config_.min_angle && azimuth <= config_.max_angle)
-        || (config_.min_angle > config_.max_angle)) {
+      // condition added to avoid calculating points which are not in the interesting defined area (min_angle < area < max_angle)
+      if ((config_.min_angle < config_.max_angle && azimuth >= config_.min_angle && azimuth <= config_.max_angle) || (config_.min_angle > config_.max_angle)) {
+        for (int j = 0, k = 0; j < NUM_CHANS_PER_BLOCK; j++, k += CHANNEL_SIZE) {
+          // distance extraction
+          tmp.bytes[0] = current_block.data[k];
+          tmp.bytes[1] = current_block.data[k + 1];
+          distance = tmp.uint * VLP32_DISTANCE_RESOLUTION;
 
-	for (int j = 0, k = 0; j < NUM_CHANS_PER_BLOCK; j++, k+=CHANNEL_SIZE){
-          uint8_t group = block % 4;
-	  uint8_t chan_id = j +   group * 32;
-	  uint8_t firing_order = chan_id/8;
-          firing_order = 0;
-	  velodyne_pointcloud::LaserCorrection &corrections = calibration_.laser_corrections[chan_id];
+          if (pointInRange(distance)) {
+            laser_number = j + bank_origin;   // Offset the laser in this block by which block it's in
+            firing_order = laser_number / 8;  // VLS-128 fires 8 lasers at a time
 
-	  // distance extraction
-	  union two_bytes tmp;
-	  tmp.bytes[0] = raw->blocks[block].data[k];
-	  tmp.bytes[1] = raw->blocks[block].data[k+1];
-	  distance = (float)tmp.uint * VLP32_DISTANCE_RESOLUTION;
-	  distance += corrections.dist_correction;
+            velodyne_pointcloud::LaserCorrection &corrections = calibration_.laser_corrections[laser_number];
 
-	  if (pointInRange(distance)) {
-	    intensity = (float)raw->blocks[block].data[k+2];
+            // correct for the laser rotation as a function of timing during the firings
+            azimuth_corrected_f = azimuth + (azimuth_diff * vls_128_laser_azimuth_cache[firing_order]);
+            azimuth_corrected = ((uint16_t) round(azimuth_corrected_f)) % 36000;
 
-	    /** correct for the laser rotation as a function of timing during the firings **/
-	    azimuth_corrected_f = azimuth + (azimuth_diff * (firing_order*CHANNEL_TDURATION) / SEQ_TDURATION);
-	    azimuth_corrected = ((uint16_t)round(azimuth_corrected_f)) % 36000;
+            // convert polar coordinates to Euclidean XYZ
+            cos_vert_angle = corrections.cos_vert_correction;
+            sin_vert_angle = corrections.sin_vert_correction;
+            cos_rot_correction = corrections.cos_rot_correction;
+            sin_rot_correction = corrections.sin_rot_correction;
 
-	    // apply calibration file and convert polar coordinates to Euclidean XYZ
-	    compute_xyzi(chan_id, azimuth_corrected, distance, intensity, x_coord, y_coord, z_coord);
+            // cos(a-b) = cos(a)*cos(b) + sin(a)*sin(b)
+            // sin(a-b) = sin(a)*cos(b) - cos(a)*sin(b)
+            cos_rot_angle =
+              cos_rot_table_[azimuth_corrected] * cos_rot_correction +
+              sin_rot_table_[azimuth_corrected] * sin_rot_correction;
+            sin_rot_angle =
+              sin_rot_table_[azimuth_corrected] * cos_rot_correction -
+              cos_rot_table_[azimuth_corrected] * sin_rot_correction;
 
-	    // append this point to the cloud
-	    VPoint point;
-	    point.ring = corrections.laser_ring;
-	    point.x = x_coord;
-	    point.y = y_coord;
-	    point.z = z_coord;
-	    point.intensity = intensity;
+            // Compute the distance in the xy plane (w/o accounting for rotation)
+            xy_distance = distance * cos_vert_angle;
 
-	    pc.points.push_back(point);
-	    ++pc.width;
-	  }
+            /** Use standard ROS coordinate system (right-hand rule) */
+            // append this point to the cloud
+            VPoint point;
+            point.ring = corrections.laser_ring;
+            point.x = xy_distance * cos_rot_angle;    // velodyne y
+            point.y = -(xy_distance * sin_rot_angle); // velodyne x
+            point.z = distance * sin_vert_angle;      // velodyne z
+
+            // Intensity extraction
+            point.intensity = current_block.data[k + 2];
+
+            pc.points.push_back(point);
+            ++pc.width;
+          }
         }
       }
     }
-  }
-
-  unsigned int swizzle_bytes_in_word ( unsigned int a )
-  {
-     unsigned int temp ;
-     // std::cerr << "Intoswizzle (0x" << std::setw(8) << std::hex  << a << ")" << std::dec << std::endl;
-     temp = 0;
-     temp |= ((a&0xff000000) >> 0);
-     temp |= ((a&0x00ff0000) >> 0);
-     temp |= ((a&0x0000ff00) << 0);
-     temp |= ((a&0x000000ff) << 0);
-     return(temp);
   }
 
   /** @brief convert raw HDL-32E channel packet to point cloud

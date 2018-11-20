@@ -1,7 +1,7 @@
 <!-- -*- mode: XML -*- -->
 <!-- Copyright (C) 2018, Velodyne LiDAR INC., Algorithms and Signal Processing Group -->
 <!-- Author : Velodyne LiDAR, Algorithms and Signal Processing Group -->
-<!-- run velodyne_pointcloud/CloudNodelet in a nodelet manager for an VLS128 -->
+<!-- run velodyne_pointcloud/CloudNodelet in a nodelet manager for a VLS-128 -->
 
 <launch>
 
@@ -11,11 +11,10 @@
   <arg name="device_ip" default="" />
   <arg name="frame_id" default="velodyne" />
   <arg name="manager" default="$(arg frame_id)_nodelet_manager" />
-  <arg name="max_range" default="200.0" />
+  <arg name="max_range" default="300.0" />
   <arg name="min_range" default="0.4" />
-  <arg name="pcap" default=" " />
+  <arg name="pcap" default="" />
   <arg name="port" default="2368" />
-  <arg name="npackets" default="625" />
   <arg name="read_fast" default="false" />
   <arg name="read_once" default="false" />
   <arg name="repeat_delay" default="0.0" />
@@ -29,7 +28,6 @@
     <arg name="model" value="VLS128"/>
     <arg name="pcap" value="$(arg pcap)"/>
     <arg name="port" value="$(arg port)"/>
-    <arg name="npackets" value="$(arg npackets)"/>
     <arg name="read_fast" value="$(arg read_fast)"/>
     <arg name="read_once" value="$(arg read_once)"/>
     <arg name="repeat_delay" value="$(arg repeat_delay)"/>

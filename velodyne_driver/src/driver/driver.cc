@@ -100,7 +100,7 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
     }
  else if (config_.model == "VLS128")
     {
-      packet_rate = 1507; // 3 groups of 128 firings where a set of 8 firings corresponds to 55.296us -> 1/(12*55.296us) 
+      packet_rate = 6250; // 3 groups of 128 firings where a set of 8 firings corresponds to 55.296us -> 1/(12*55.296us) 
       model_full_name = "VLS-128";
     }
   else if (config_.model == "VLP16")
@@ -116,14 +116,17 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
   std::string deviceName(std::string("Velodyne ") + model_full_name);
 
   private_nh.param("rpm", config_.rpm, 600.0);
+  private_nh.getParam("rpm", config_.rpm);
   ROS_INFO_STREAM(deviceName << " rotating at " << config_.rpm << " RPM");
   double frequency = (config_.rpm / 60.0);     // expected Hz rate
 
-
   // default number of packets for each scan is a single revolution
   // (fractions rounded up)
-  config_.npackets = (int) ceil(packet_rate / frequency);
+  int npackets = (int) ceil(packet_rate / frequency);
+  private_nh.param("npackets", config_.npackets, npackets);
+  private_nh.setParam("npackets", npackets);
   private_nh.getParam("npackets", config_.npackets);
+  // private_nh.getParam("npackets", config_.npackets);
   ROS_INFO_STREAM("publishing " << config_.npackets << " packets per scan");
 
   std::string dump_file;

@@ -9,7 +9,7 @@
   <arg name="model" default="64E" />
   <arg name="pcap" default="" />
   <arg name="port" default="2368" />
-  <arg name="npackets" default="1507" />
+  <arg name="npackets" default="" />
   <arg name="read_fast" default="false" />
   <arg name="read_once" default="false" />
   <arg name="repeat_delay" default="0.0" />

@@ -278,10 +278,12 @@ namespace velodyne_driver
           {
             // Skip packets not for the correct port and from the
             // selected IP address.
-            if (!devip_str_.empty() &&
+            if ( /* !devip_str_.empty() &&  Let the filter take care of skipping bad packets ... not dependent on device IP setting*/  
                 (0 == pcap_offline_filter(&pcap_packet_filter_,
-                                          header, pkt_data)))
+                                          header, pkt_data))) 
+            {
               continue;
+            }
 
             // Keep the reader from blowing through the file.
             if (read_fast_ == false)

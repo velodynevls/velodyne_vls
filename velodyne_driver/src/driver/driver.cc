@@ -81,12 +81,14 @@ Dual Return 0x39 (57) Puck LITE 0x22 (34)
     case 34:
         return(1); // vlp16 puck lite
     case 36:
-        return(2); // puck hires 
+        return(1); // puck hires  (same as vlp16 ?? need to check)
     case 40:
         return(2); // vlp32c
     case 49:
         return(2); // velarray
     case 161:
+        return(8); // vls128
+    case 99:
         return(8); // vls128
     default:
     ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 4 simultaneous firings");
@@ -118,6 +120,8 @@ int get_rmode_multiplier(uint8_t sensor_model, uint8_t packet_rmode)
     case 49:
         return(2); // velarray
     case 161:
+        return(3); // vls128
+    case 99:
         return(3); // vls128
     default:
     ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 4 simultaneous firings");
@@ -172,57 +176,57 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
     {                                   // 1 packet holds 384 points
       packet_rate = 3472.17;            // 1333312 / 384
       model_full_name = std::string("HDL-") + config_.model;
-      slot_time = 0.00000266666666666667; // basic slot time
-      num_slots = 20;                     // number of active + maintenence slots
-      active_slots = 16;                  // number of active slots
+      slot_time = 1.2e-6; // basic slot time
+      num_slots = 116;                     // number of active + maintenence slots
+      active_slots = 32;                  // number of active slots
     }
   else if (config_.model == "64E")
     {
       packet_rate = 2600.0;
       model_full_name = std::string("HDL-") + config_.model;
-      slot_time = 0.00000266666666666667; // basic slot time
-      num_slots = 20;                     // number of slots
-      active_slots = 16;                  // number of active slots
+      slot_time = 1.2e-6; // basic slot time
+      num_slots = 116;                     // number of slots
+      active_slots = 32;                  // number of active slots
     }
   else if (config_.model == "32E")
     {
       packet_rate = 1808.0;
       model_full_name = std::string("HDL-") + config_.model;
-      slot_time = 0.00000266666666666667; // basic slot time
-      num_slots = 20;                     // number of slots
-      active_slots = 16;                  // number of active slots
+      slot_time = 1.152e-6; // basic slot time
+      num_slots = 40;                     // number of slots
+      active_slots = 32;                  // number of active slots
     }
  else if (config_.model == "VLP32C")
     {
       packet_rate = 3014; // 12 groups of 32 firings where a pair of 2 firings corresponds to 55.296us -> 1/(12*55.296us)
       model_full_name = "VLP-32C";
-      slot_time = 0.00000266666666666667; // basic slot time
-      num_slots = 20;                     // number of slots
+      slot_time = 2.304e-6; // basic slot time
+      num_slots = 24;                     // number of slots
       active_slots = 16;                  // number of active slots
     }
  else if (config_.model == "VLS128")
     {
       packet_rate = 12507; // 3 groups of 128 firings where a set of 8 firings corresponds to 55.296us -> 1/(12*55.296us) 
       model_full_name = "VLS-128";
-      slot_time = 0.00000266666666666667; // basic slot time
-      num_slots = 20;                     // number of slots
-      active_slots = 16;                  // number of active slots
+      slot_time = 2.665e-6;              // basic slot time
+      num_slots = 20;                    // number of slots
+      active_slots = 16;                 // number of active slots
     }
   else if (config_.model == "VLP16")
     {
       packet_rate = 1507;             // 754 Packets/Second for Last or Strongest mode 1508 for dual (VLP-16 User Manual)
       model_full_name = "VLP-16";
-      slot_time = 0.00000266666666666667; // basic slot time
-      num_slots = 20;                     // number of slots
+      slot_time = 2.304e-6; // basic slot time
+      num_slots = 24;                     // number of slots
       active_slots = 16;                  // number of active slots
     }
   else
     {
       ROS_ERROR_STREAM("unknown Velodyne LIDAR model: " << config_.model);
       packet_rate = 2600.0;
-      slot_time = 0.00000266666666666667; // basic slot time
-      num_slots = 20;                     // number of slots
-      active_slots = 16;                  // number of active slots
+      slot_time = 1.2e-6;                  // basic slot time
+      num_slots = 116;                     // number of slots
+      active_slots = 32;                   // number of active slots
     }
   std::string deviceName(std::string("Velodyne ") + model_full_name);
 
@@ -241,6 +245,7 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
   ROS_INFO_STREAM("publishing " << config_.npackets << " packets per scan");
   private_nh.param("auto_rpm_alpha",auto_alpha,0.999);
   private_nh.getParam("auto_rpm_alpha", auto_alpha);
+  ROS_INFO_STREAM("Automatic RPM smoothing coeff " << auto_alpha  << " (1 means no tracking, zero means no smoothing) ");
 
   private_nh.param("pcap", dump_file, std::string(""));
 

@@ -95,20 +95,65 @@ Dual Return 0x39 (57) Puck LITE 0x22 (34)
 
   }
 }
-int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle) 
+
+int get_rmode_multiplier(uint8_t sensor_model, uint8_t packet_rmode)
+{
+ /*
+    HDL64E 2
+    VLP32C 2
+    HDL32E 2
+    VLS128 3
+    VLSP16 2
+*/
+  switch(sensor_model)
+  {
+    case 33:
+        return(2); // hdl32e
+    case 34:
+        return(2); // vlp16 puck lite
+    case 36:
+        return(2); // puck hires 
+    case 40:
+        return(2); // vlp32c
+    case 49:
+        return(2); // velarray
+    case 161:
+        return(3); // vls128
+    default:
+    ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 4 simultaneous firings");
+    
+        return(2); // hdl-64e
+
+  }
+ 
+}
+int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
 {
   double rps = auto_rpm / 60.0; 
   double time_for_360_degree_scan = 1.0/rps;
   double total_number_of_firing_cycles_per_full_scan = time_for_360_degree_scan / firing_cycle;
   double total_number_of_firings_per_full_scan =  total_number_of_firing_cycles_per_full_scan 
                                                 * get_concurrent_beams(sensor_model); 
-  double total_number_of_points_captured_for_single_return = 16 * total_number_of_firings_per_full_scan;
+  double total_number_of_points_captured_for_single_return = active_slots * total_number_of_firings_per_full_scan;
   double total_number_of_packets_per_full_scan = total_number_of_points_captured_for_single_return / 384;
   double total_number_of_packets_per_second = total_number_of_packets_per_full_scan / time_for_360_degree_scan;
-  
-  return(total_number_of_packets_per_full_scan);
-
+  return(get_rmode_multiplier(sensor_model,packet_rmode)*total_number_of_packets_per_full_scan);
 }
+
+
+int get_auto_packetrate(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
+{
+  double rps = auto_rpm / 60.0; 
+  double time_for_360_degree_scan = 1.0/rps;
+  double total_number_of_firing_cycles_per_full_scan = time_for_360_degree_scan / firing_cycle;
+  double total_number_of_firings_per_full_scan =  total_number_of_firing_cycles_per_full_scan 
+                                                * get_concurrent_beams(sensor_model); 
+  double total_number_of_points_captured_for_single_return = active_slots * total_number_of_firings_per_full_scan;
+  double total_number_of_packets_per_full_scan = total_number_of_points_captured_for_single_return / 384;
+  double total_number_of_packets_per_second = total_number_of_packets_per_full_scan / time_for_360_degree_scan;
+  return(get_rmode_multiplier(sensor_model,packet_rmode)*total_number_of_packets_per_second);
+}
+
 VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
                                ros::NodeHandle private_nh)
 {
@@ -127,36 +172,57 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
     {                                   // 1 packet holds 384 points
       packet_rate = 3472.17;            // 1333312 / 384
       model_full_name = std::string("HDL-") + config_.model;
+      slot_time = 0.00000266666666666667; // basic slot time
+      num_slots = 20;                     // number of active + maintenence slots
+      active_slots = 16;                  // number of active slots
     }
   else if (config_.model == "64E")
     {
       packet_rate = 2600.0;
       model_full_name = std::string("HDL-") + config_.model;
+      slot_time = 0.00000266666666666667; // basic slot time
+      num_slots = 20;                     // number of slots
+      active_slots = 16;                  // number of active slots
     }
   else if (config_.model == "32E")
     {
       packet_rate = 1808.0;
       model_full_name = std::string("HDL-") + config_.model;
+      slot_time = 0.00000266666666666667; // basic slot time
+      num_slots = 20;                     // number of slots
+      active_slots = 16;                  // number of active slots
     }
  else if (config_.model == "VLP32C")
     {
-      packet_rate = 1507; // 12 groups of 32 firings where a pair of 2 firings corresponds to 55.296us -> 1/(12*55.296us)
+      packet_rate = 3014; // 12 groups of 32 firings where a pair of 2 firings corresponds to 55.296us -> 1/(12*55.296us)
       model_full_name = "VLP-32C";
+      slot_time = 0.00000266666666666667; // basic slot time
+      num_slots = 20;                     // number of slots
+      active_slots = 16;                  // number of active slots
     }
  else if (config_.model == "VLS128")
     {
-      packet_rate = 6250; // 3 groups of 128 firings where a set of 8 firings corresponds to 55.296us -> 1/(12*55.296us) 
+      packet_rate = 12507; // 3 groups of 128 firings where a set of 8 firings corresponds to 55.296us -> 1/(12*55.296us) 
       model_full_name = "VLS-128";
+      slot_time = 0.00000266666666666667; // basic slot time
+      num_slots = 20;                     // number of slots
+      active_slots = 16;                  // number of active slots
     }
   else if (config_.model == "VLP16")
     {
-      packet_rate = 754;             // 754 Packets/Second for Last or Strongest mode 1508 for dual (VLP-16 User Manual)
+      packet_rate = 1507;             // 754 Packets/Second for Last or Strongest mode 1508 for dual (VLP-16 User Manual)
       model_full_name = "VLP-16";
+      slot_time = 0.00000266666666666667; // basic slot time
+      num_slots = 20;                     // number of slots
+      active_slots = 16;                  // number of active slots
     }
   else
     {
       ROS_ERROR_STREAM("unknown Velodyne LIDAR model: " << config_.model);
       packet_rate = 2600.0;
+      slot_time = 0.00000266666666666667; // basic slot time
+      num_slots = 20;                     // number of slots
+      active_slots = 16;                  // number of active slots
     }
   std::string deviceName(std::string("Velodyne ") + model_full_name);
 
@@ -164,6 +230,7 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
   private_nh.getParam("rpm", config_.rpm);
   ROS_INFO_STREAM(deviceName << " rotating at " << config_.rpm << " RPM");
   double frequency = (config_.rpm / 60.0);     // expected Hz rate
+  auto_rpm = config_.rpm;
 
   // default number of packets for each scan is a single revolution
   // (fractions rounded up)
@@ -172,8 +239,9 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
   private_nh.getParam("npackets", config_.npackets);
   private_nh.setParam("npackets", npackets);
   ROS_INFO_STREAM("publishing " << config_.npackets << " packets per scan");
+  private_nh.param("auto_rpm_alpha",auto_alpha,0.999);
+  private_nh.getParam("auto_rpm_alpha", auto_alpha);
 
-  std::string dump_file;
   private_nh.param("pcap", dump_file, std::string(""));
 
   int udp_port;
@@ -217,8 +285,6 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
   // raw packet output topic
   output_ =
     node.advertise<velodyne_msgs::VelodyneScan>("velodyne_packets", 10);
-  slot_time = 0.00000266666666666667; // basic slot time
-  num_slots = 20;                     // number of slots
   firing_cycle = slot_time * num_slots; // firing cycle time
 }
 
@@ -253,15 +319,20 @@ bool VelodyneDriver::poll(void)
       curr_packet_toh |= scan->packets[i].data[1203] << 24;
       curr_packet_azm  = scan->packets[i].data[2]; // lower word of azimuth block 0
       curr_packet_azm |= scan->packets[i].data[3] << 8; // higher word of azimuth block 0
-      auto_alpha = 0.999;
       curr_packet_rmode = scan->packets[i].data[1204];
       curr_packet_sensor_model = scan->packets[i].data[1205];
       if(i > 0 ) 
       {
           int  delta_azm = ((curr_packet_azm + 36000) - prev_packet_azm) % 36000; 
           long  delta_toh = ((curr_packet_toh + 3600000000) - prev_packet_toh) % 3600000000; 
-          double inst_azm_rate = double(delta_azm)*1e4 / double(delta_toh);
-          auto_rpm  = auto_alpha*auto_rpm + (1.0 - auto_alpha) * (inst_azm_rate/ 6) ;
+          double inst_azm_rate = double(delta_azm)*1e4 / double(delta_toh); // 1 step diff
+          auto_rpm  = auto_alpha*auto_rpm + (1.0 - auto_alpha) * (inst_azm_rate/ 6) ; // 6 is basically ratio of 360 deg for 1 revolution 
+                                                                                      //  and 60 seconds in minute
+                                                                                      // auto_rpm works as a 1 tap IIR with auto_alpha as
+                                                                                      // a coeff of memory.
+                                                                                      // we can trade tracking bandwidth with variance of 
+                                                                                      // auto_rpm by auto_alpha.. value of 0 will kill tracking
+                                                                                      // and have zero variance in auto_rpm
           /*
           std::cerr << "delta_azm = " << delta_azm ;
           std::cerr << ", delta_toh = " << delta_toh ;
@@ -274,8 +345,9 @@ bool VelodyneDriver::poll(void)
       prev_packet_azm = curr_packet_azm;
   }
   // calculate npackets for next scan
-  auto_npackets =  get_auto_npackets(curr_packet_sensor_model, curr_packet_rmode, auto_rpm,firing_cycle); 
-  std::cerr << "auto_npackets = " << auto_npackets << std::endl ;
+  auto_npackets =  get_auto_npackets(curr_packet_sensor_model, curr_packet_rmode, auto_rpm,firing_cycle,active_slots); 
+  
+  // std::cerr << "auto_npackets = " << auto_npackets << std::endl ;
   // average the time stamp from first package and last package
   double firstTimeStamp = computeTimeStamp(scan, 0);
   double lastTimeStamp = computeTimeStamp(scan, config_.npackets - 1);
@@ -298,7 +370,11 @@ bool VelodyneDriver::poll(void)
   diagnostics_.update();
   // update npackets for next run
   config_.npackets = auto_npackets; 
-
+  if (dump_file != "")                  // have PCAP file?
+  {
+    auto_packet_rate = get_auto_packetrate(curr_packet_sensor_model, curr_packet_rmode, auto_rpm,firing_cycle,active_slots);
+    input_->setPacketRate(auto_packet_rate);
+  }
   return true;
 }
 
@@ -307,6 +383,7 @@ void VelodyneDriver::callback(velodyne_driver::VelodyneNodeConfig &config,
 {
   ROS_INFO("Reconfigure Request");
   config_.time_offset = config.time_offset;
+  auto_alpha = config.auto_rpm_alpha;
 }
 
 } // namespace velodyne_driver

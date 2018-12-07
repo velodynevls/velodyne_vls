@@ -365,7 +365,7 @@ namespace velodyne_rawdata
     float distance, intensity;
 
     const raw_packet_t *raw = (const raw_packet_t *) &pkt.data[0];
-
+    bool dual_return = (pkt.data[1204] == 57);
     for (int block = 0; block < NUM_BLOCKS_PER_PACKET; block++) {
 
       // ignore packets with mangled or otherwise different contents
@@ -384,12 +384,12 @@ namespace velodyne_rawdata
         azimuth = azimuth_next;
       }
       // Calculate difference between current and next block's azimuth angle.
-      if (block < (NUM_BLOCKS_PER_PACKET-1)){
-        azimuth_next = raw->blocks[block+1].rotation;
+      if (block < (NUM_BLOCKS_PER_PACKET-(1 + dual_return))){
+        azimuth_next = raw->blocks[block+(1+dual_return)].rotation; // correct for dual return
         azimuth_diff = (float)((36000 + azimuth_next - azimuth)%36000);
         last_azimuth_diff = azimuth_diff;
       } else {
-        azimuth_diff = last_azimuth_diff;
+        azimuth_diff = (block == NUM_BLOCKS_PER_PACKET-1) ? 0 : last_azimuth_diff;
       }
 
       /*condition added to avoid calculating points which are not
@@ -535,6 +535,7 @@ namespace velodyne_rawdata
     float distance, intensity;
 
     const raw_packet_t *raw = (const raw_packet_t *) &pkt.data[0];
+    bool dual_return = (pkt.data[1204] == 57);
 
     for (int block = 0; block < NUM_BLOCKS_PER_PACKET; block++) {
 
@@ -554,12 +555,12 @@ namespace velodyne_rawdata
       } else {
         azimuth = azimuth_next;
       }
-      if (block < (NUM_BLOCKS_PER_PACKET-1)){
-        azimuth_next = raw->blocks[block+1].rotation;
+      if (block < (NUM_BLOCKS_PER_PACKET-(1+dual_return))){
+        azimuth_next = raw->blocks[block+(1+dual_return)].rotation;
         azimuth_diff = (float)((36000 + azimuth_next - azimuth)%36000);
         last_azimuth_diff = azimuth_diff;
       } else {
-        azimuth_diff = last_azimuth_diff;
+        azimuth_diff = (block == NUM_BLOCKS_PER_PACKET-1) ? 0 : last_azimuth_diff;
       }
 
       /*condition added to avoid calculating points which are not
@@ -625,8 +626,9 @@ namespace velodyne_rawdata
     float xy_distance;
 
     uint8_t laser_number, firing_order;
+    bool dual_return = (pkt.data[1204] == 57);
 
-    for (int block = 0; block < NUM_BLOCKS_PER_PACKET; block++) {
+    for (int block = 0; block < NUM_BLOCKS_PER_PACKET - (4* dual_return); block++) {
       // cache block for use
       const raw_block_t &current_block = raw->blocks[block];
 
@@ -661,9 +663,9 @@ namespace velodyne_rawdata
       } else {
         azimuth = azimuth_next;
       }
-      if (block < (NUM_BLOCKS_PER_PACKET - 1)) {
+      if (block < (NUM_BLOCKS_PER_PACKET - (1+dual_return))) {
         // Get the next block rotation to calculate how far we rotate between blocks
-        azimuth_next = raw->blocks[block + 1].rotation;
+        azimuth_next = raw->blocks[block + (1+dual_return)].rotation;
 
         // Finds the difference between two sucessive blocks
         azimuth_diff = (float)((36000 + azimuth_next - azimuth) % 36000);
@@ -674,7 +676,7 @@ namespace velodyne_rawdata
         // This makes the assumption the difference between the last block and the next packet is the
         // same as the last to the second to last.
         // Assumes RPM doesn't change much between blocks
-        azimuth_diff = last_azimuth_diff;
+        azimuth_diff = (block == NUM_BLOCKS_PER_PACKET - (4*dual_return)-1) ? 0 : last_azimuth_diff;
       }
 
       // condition added to avoid calculating points which are not in the interesting defined area (min_angle < area < max_angle)

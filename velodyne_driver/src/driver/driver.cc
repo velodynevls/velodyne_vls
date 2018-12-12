@@ -26,6 +26,7 @@
 
 namespace velodyne_driver
 {
+  static double prev_frac_packet = 0;
   std::string toBinary(int n)
   {
         std::string r;
@@ -91,8 +92,7 @@ Dual Return 0x39 (57) Puck LITE 0x22 (34)
     case 99:
         return(8); // vls128
     default:
-    ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 4 simultaneous firings");
-    
+        ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 4 simultaneous firings");
         return(4); // hdl-64e
 
   }
@@ -107,30 +107,35 @@ int get_rmode_multiplier(uint8_t sensor_model, uint8_t packet_rmode)
     VLS128 3
     VLSP16 2
 */
-  switch(sensor_model)
+  if(packet_rmode  == 57)
   {
-    case 33:
-        return(2); // hdl32e
-    case 34:
-        return(2); // vlp16 puck lite
-    case 36:
-        return(2); // puck hires 
-    case 40:
-        return(2); // vlp32c
-    case 49:
-        return(2); // velarray
-    case 161:
-        return(3); // vls128
-    case 99:
-        return(3); // vls128
-    default:
-    ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 4 simultaneous firings");
-    
-        return(2); // hdl-64e
-
-  }
- 
+    switch(sensor_model)
+    {
+      case 33:
+          return(2); // hdl32e
+      case 34:
+          return(2); // vlp16 puck lite
+      case 36:
+          return(2); // puck hires 
+      case 40:
+          return(2); // vlp32c
+      case 49:
+          return(2); // velarray
+      case 161:
+          return(3); // vls128
+      case 99:
+          return(3); // vls128
+      default:
+          ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 2x number of packekts for Dual return");
+          return(2); // hdl-64e
+    }
+   }
+   else
+   {
+     return(1);
+   }
 }
+
 int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
 {
   double rps = auto_rpm / 60.0; 
@@ -141,7 +146,9 @@ int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rp
   double total_number_of_points_captured_for_single_return = active_slots * total_number_of_firings_per_full_scan;
   double total_number_of_packets_per_full_scan = total_number_of_points_captured_for_single_return / 384;
   double total_number_of_packets_per_second = total_number_of_packets_per_full_scan / time_for_360_degree_scan;
-  return(get_rmode_multiplier(sensor_model,packet_rmode)*total_number_of_packets_per_full_scan);
+  double auto_npackets = floor(get_rmode_multiplier(sensor_model,packet_rmode)*(total_number_of_packets_per_full_scan+prev_frac_packet));
+  prev_frac_packet = auto_npackets - total_number_of_packets_per_full_scan - prev_frac_packet;
+  return(auto_npackets);
 }
 
 
@@ -155,7 +162,7 @@ int get_auto_packetrate(uint8_t sensor_model, uint8_t packet_rmode, double auto_
   double total_number_of_points_captured_for_single_return = active_slots * total_number_of_firings_per_full_scan;
   double total_number_of_packets_per_full_scan = total_number_of_points_captured_for_single_return / 384;
   double total_number_of_packets_per_second = total_number_of_packets_per_full_scan / time_for_360_degree_scan;
-  return(get_rmode_multiplier(sensor_model,packet_rmode)*total_number_of_packets_per_second);
+  return((get_rmode_multiplier(sensor_model,packet_rmode)*total_number_of_packets_per_second));
 }
 
 VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
@@ -216,6 +223,7 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
     {
       packet_rate = 1507;             // 754 Packets/Second for Last or Strongest mode 1508 for dual (VLP-16 User Manual)
       model_full_name = "VLP-16";
+ //     slot_time = 2.304e-6; // basic slot time
       slot_time = 2.304e-6; // basic slot time
       num_slots = 24;                     // number of slots
       active_slots = 16;                  // number of active slots
@@ -338,13 +346,13 @@ bool VelodyneDriver::poll(void)
                                                                                       // we can trade tracking bandwidth with variance of 
                                                                                       // auto_rpm by auto_alpha.. value of 0 will kill tracking
                                                                                       // and have zero variance in auto_rpm
-          /*
-          std::cerr << "delta_azm = " << delta_azm ;
-          std::cerr << ", delta_toh = " << delta_toh ;
-          std::cerr << ", rate = " << inst_azm_rate ;
-          std::cerr << ", auto_rpm = " << auto_rpm ;
-          std::cerr <<  std::endl;
-          */
+          
+          // std::cerr << "delta_azm = " << delta_azm ;
+          // std::cerr << ", delta_toh = " << delta_toh ;
+          // std::cerr << ", rate = " << inst_azm_rate ;
+          // std::cerr << ", auto_rpm = " << auto_rpm ;
+          // std::cerr <<  std::endl;
+         
       }
       prev_packet_toh = curr_packet_toh;
       prev_packet_azm = curr_packet_azm;
@@ -352,7 +360,6 @@ bool VelodyneDriver::poll(void)
   // calculate npackets for next scan
   auto_npackets =  get_auto_npackets(curr_packet_sensor_model, curr_packet_rmode, auto_rpm,firing_cycle,active_slots); 
   
-  // std::cerr << "auto_npackets = " << auto_npackets << std::endl ;
   // average the time stamp from first package and last package
   double firstTimeStamp = computeTimeStamp(scan, 0);
   double lastTimeStamp = computeTimeStamp(scan, config_.npackets - 1);
@@ -374,6 +381,9 @@ bool VelodyneDriver::poll(void)
   diag_topic_->tick(scan->header.stamp);
   diagnostics_.update();
   // update npackets for next run
+   std::cerr << ", auto_rpm = " << auto_rpm ;
+   std::cerr << ", auto_npackets = " << auto_npackets << std::endl ;
+         
   config_.npackets = auto_npackets; 
   if (dump_file != "")                  // have PCAP file?
   {

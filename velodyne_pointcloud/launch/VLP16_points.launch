@@ -18,6 +18,7 @@
   <arg name="rpm" default="600.0" />
   <arg name="laserscan_ring" default="-1" />
   <arg name="laserscan_resolution" default="0.007" />
+  <arg name="auto_rpm_alpha" default="0.5" />
 
   <!-- start nodelet manager and driver nodelets -->
   <include file="$(find velodyne_driver)/launch/nodelet_manager.launch">
@@ -31,6 +32,7 @@
     <arg name="read_once" value="$(arg read_once)"/>
     <arg name="repeat_delay" value="$(arg repeat_delay)"/>
     <arg name="rpm" value="$(arg rpm)"/>
+    <arg name="auto_rpm_alpha" value="$(arg auto_rpm_alpha)"/>
   </include>
 
   <!-- start cloud nodelet -->

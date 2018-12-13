@@ -27,7 +27,7 @@
 namespace velodyne_driver
 {
   static double prev_frac_packet = 0;
-  std::string toBinary(int n)
+  inline   std::string toBinary(int n)
   {
         std::string r;
         while(n!=0) {r=(n%2==0 ?"0":"1")+r; n/=2;}
@@ -37,7 +37,7 @@ namespace velodyne_driver
         return r;
   }
 
-  double convertBinaryToDecimal(std::string binaryString)
+  inline   double convertBinaryToDecimal(std::string binaryString)
   {
       double value = 0;
       int indexCounter = 0;
@@ -51,7 +51,7 @@ namespace velodyne_driver
       return value;
   }
 
-  double computeTimeStamp(velodyne_msgs::VelodyneScanPtr scan, int index){
+  inline   double computeTimeStamp(velodyne_msgs::VelodyneScanPtr scan, int index){
 
       std::string digit4 = toBinary(scan->packets[index].data[1203]);
       std::string digit3 = toBinary(scan->packets[index].data[1202]);
@@ -63,7 +63,13 @@ namespace velodyne_driver
       double time_stamp = (double)value / 1000000;
       return time_stamp;
   }
-int get_concurrent_beams(uint8_t sensor_model)
+
+/** Utility function for Velodyne Driver
+ *  gets the number of laser beams fired concurrently 
+ *  for different sensor models 
+*/
+
+inline int get_concurrent_beams(uint8_t sensor_model)
 {
 /*
 Strongest 0x37 (55)   HDL-32E 0x21 (33)
@@ -92,13 +98,18 @@ Dual Return 0x39 (57) Puck LITE 0x22 (34)
     case 99:
         return(8); // vls128
     default:
-        ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 4 simultaneous firings");
-        return(4); // hdl-64e
+        ROS_WARN_STREAM("[Velodyne Ros driver]Default assumption of device id .. Defaulting to HDL64E with 2 simultaneous firings");
+        return(2); // hdl-64e
 
   }
 }
 
-int get_rmode_multiplier(uint8_t sensor_model, uint8_t packet_rmode)
+/** Utility function for Velodyne Driver
+ *  gets the number of packet multiplier for dual return mode vs 
+ *  single return mode 
+*/
+
+inline int get_rmode_multiplier(uint8_t sensor_model, uint8_t packet_rmode)
 {
  /*
     HDL64E 2
@@ -136,7 +147,16 @@ int get_rmode_multiplier(uint8_t sensor_model, uint8_t packet_rmode)
    }
 }
 
-int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
+/** Utility function for the Velodyne driver 
+ *
+ *  provides a estimated value for number of packets in 
+ *  1 full scan at current operating rpm estimate of the sensor 
+ *  This value is used by the poll() routine to assemble 1 scan from 
+ *  required number of packets 
+ *  @returns number of packets in full scan 
+ */
+
+inline int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
 {
   double rps = auto_rpm / 60.0; 
   double time_for_360_degree_scan = 1.0/rps;
@@ -151,8 +171,16 @@ int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rp
   return(auto_npackets);
 }
 
+/** Utility function for the Velodyne driver 
+ *
+ *  provides a estimated value for number of packets in 
+ *  1 second at current operating rpm estimate of the sensor 
+ *  This value is used by the pcap reader (InputPCAP class ) 
+ *  to pace the speed of packet reading.
+ *  @returns number of packets per second 
+ */
 
-double get_auto_packetrate(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
+inline double get_auto_packetrate(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
 {
   double rps = auto_rpm / 60.0; 
   double time_for_360_degree_scan = 1.0/rps;
@@ -164,6 +192,12 @@ double get_auto_packetrate(uint8_t sensor_model, uint8_t packet_rmode, double au
   double total_number_of_packets_per_second = total_number_of_packets_per_full_scan / time_for_360_degree_scan;
   return((get_rmode_multiplier(sensor_model,packet_rmode)*total_number_of_packets_per_second));
 }
+/** Constructor for the Velodyne driver 
+ *
+ *  provides a binding to ROS node for processing and 
+ *  configuration 
+ *  @returns handle to driver object
+ */
 
 VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
                                ros::NodeHandle private_nh)
@@ -303,6 +337,7 @@ VelodyneDriver::VelodyneDriver(ros::NodeHandle node,
 
 /** poll the device
  *
+ * poll is used by nodelet to bind to the ROS thread.
  *  @returns true unless end of file reached
  */
 bool VelodyneDriver::poll(void)

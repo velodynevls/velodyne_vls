@@ -146,13 +146,13 @@ int get_auto_npackets(uint8_t sensor_model, uint8_t packet_rmode, double auto_rp
   double total_number_of_points_captured_for_single_return = active_slots * total_number_of_firings_per_full_scan;
   double total_number_of_packets_per_full_scan = total_number_of_points_captured_for_single_return / 384;
   double total_number_of_packets_per_second = total_number_of_packets_per_full_scan / time_for_360_degree_scan;
-  double auto_npackets = floor(get_rmode_multiplier(sensor_model,packet_rmode)*(total_number_of_packets_per_full_scan+prev_frac_packet));
-  prev_frac_packet = auto_npackets - total_number_of_packets_per_full_scan - prev_frac_packet;
+  double auto_npackets = get_rmode_multiplier(sensor_model,packet_rmode) * floor((total_number_of_packets_per_full_scan+prev_frac_packet));
+  prev_frac_packet = get_rmode_multiplier(sensor_model,packet_rmode) * (total_number_of_packets_per_full_scan + prev_frac_packet) - auto_npackets ;
   return(auto_npackets);
 }
 
 
-int get_auto_packetrate(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
+double get_auto_packetrate(uint8_t sensor_model, uint8_t packet_rmode, double auto_rpm, double firing_cycle, int active_slots) 
 {
   double rps = auto_rpm / 60.0; 
   double time_for_360_degree_scan = 1.0/rps;
@@ -381,8 +381,9 @@ bool VelodyneDriver::poll(void)
   diag_topic_->tick(scan->header.stamp);
   diagnostics_.update();
   // update npackets for next run
-   std::cerr << ", auto_rpm = " << auto_rpm ;
-   std::cerr << ", auto_npackets = " << auto_npackets << std::endl ;
+  // std::cerr << ", auto_rpm = " << auto_rpm ;
+  // std::cerr << ", auto_npackets = " << auto_npackets;
+  // std::cerr << ", prev_frac_packet = " << prev_frac_packet << std::endl ;
          
   config_.npackets = auto_npackets; 
   if (dump_file != "")                  // have PCAP file?

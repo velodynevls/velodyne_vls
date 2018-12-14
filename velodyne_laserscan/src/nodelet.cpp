@@ -21,4 +21,5 @@ private:
 
 }
 
-PLUGINLIB_DECLARE_CLASS(velodyne_laserscan, LaserScanNodelet, velodyne_laserscan::LaserScanNodelet, nodelet::Nodelet);
+// PLUGINLIB_DECLARE_CLASS(velodyne_laserscan, LaserScanNodelet, velodyne_laserscan::LaserScanNodelet, nodelet::Nodelet);
+PLUGINLIB_EXPORT_CLASS(/*velodyne_laserscan, LaserScanNodelet,*/ velodyne_laserscan::LaserScanNodelet, nodelet::Nodelet);

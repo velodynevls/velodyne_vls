@@ -111,6 +111,11 @@ namespace velodyne_driver
     (void) close(sockfd_);
   }
 
+  void InputSocket::setPacketRate ( const double packet_rate)
+  { 
+      return;
+  }
+
   /** @brief Get one velodyne packet. */
   int InputSocket::getPacket(velodyne_msgs::VelodynePacket *pkt, const double time_offset)
   {
@@ -257,6 +262,7 @@ namespace velodyne_driver
     filter << "udp dst port " << port;
     pcap_compile(pcap_, &pcap_packet_filter_,
                  filter.str().c_str(), 1, PCAP_NETMASK_UNKNOWN);
+    pwait_time = NULL;
   }
 
   /** destructor */
@@ -265,6 +271,15 @@ namespace velodyne_driver
     pcap_close(pcap_);
   }
 
+  void InputPCAP::setPacketRate ( const double packet_rate)
+  { 
+    //packet_rate_(packet_rate); 
+    if(pwait_time != NULL) 
+    {
+      delete pwait_time ;
+    }
+    pwait_time = new ros::Duration(1.0/packet_rate);
+  }
   /** @brief Get one velodyne packet. */
   int InputPCAP::getPacket(velodyne_msgs::VelodynePacket *pkt, const double time_offset)
   {
@@ -278,14 +293,21 @@ namespace velodyne_driver
           {
             // Skip packets not for the correct port and from the
             // selected IP address.
-            if (!devip_str_.empty() &&
+            if ( /* !devip_str_.empty() &&  Let the filter take care of skipping bad packets ... not dependent on device IP setting*/  
                 (0 == pcap_offline_filter(&pcap_packet_filter_,
-                                          header, pkt_data)))
+                                          header, pkt_data))) 
+            {
               continue;
+            }
 
             // Keep the reader from blowing through the file.
             if (read_fast_ == false)
-              packet_rate_.sleep();
+            {
+              if(pwait_time == NULL) // use initial estimated wait from configs
+                packet_rate_.sleep();
+              else 
+                pwait_time->sleep();  // use auto rpm derived wait time
+            }
             
             memcpy(&pkt->data[0], pkt_data+42, packet_size);
             pkt->stamp = ros::Time::now(); // time_offset not considered here, as no synchronization required

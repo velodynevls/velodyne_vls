@@ -62,6 +62,7 @@ namespace velodyne_driver
      */
     virtual int getPacket(velodyne_msgs::VelodynePacket *pkt,
                           const double time_offset) = 0;
+    virtual void setPacketRate( const double packet_rate ) = 0; // necessary for automatic adjustment of rpm
 
   protected:
     ros::NodeHandle private_nh_;
@@ -79,8 +80,9 @@ namespace velodyne_driver
 
     virtual int getPacket(velodyne_msgs::VelodynePacket *pkt, 
                           const double time_offset);
+
     void setDeviceIP( const std::string& ip );
-  private:
+    void setPacketRate( const double packet_rate ) ; // necessary for automatic adjustment of rpm
 
   private:
     int sockfd_;
@@ -108,9 +110,10 @@ namespace velodyne_driver
     virtual int getPacket(velodyne_msgs::VelodynePacket *pkt, 
                           const double time_offset);
     void setDeviceIP( const std::string& ip );
-
+    void setPacketRate( const double packet_rate ); // necessary for automatic adjustment of rpm
   private:
     ros::Rate packet_rate_;
+    ros::Duration *pwait_time;
     std::string filename_;
     pcap_t *pcap_;
     bpf_program pcap_packet_filter_;

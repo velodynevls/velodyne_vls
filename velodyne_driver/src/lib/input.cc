@@ -156,19 +156,19 @@ namespace velodyne_driver
               {
                 if (errno != EINTR)
                   ROS_ERROR("poll() error: %s", strerror(errno));
-                return 1;
+                return -1;
               }
             if (retval == 0)            // poll() timeout?
               {
                 ROS_WARN("Velodyne poll() timeout");
-                return 1;
+                return 0;
               }
             if ((fds[0].revents & POLLERR)
                 || (fds[0].revents & POLLHUP)
                 || (fds[0].revents & POLLNVAL)) // device error?
               {
                 ROS_ERROR("poll() reports Velodyne error");
-                return 1;
+                return -1;
               }
           } while ((fds[0].revents & POLLIN) == 0);
 
@@ -185,7 +185,7 @@ namespace velodyne_driver
               {
                 perror("recvfail");
                 ROS_INFO("recvfail");
-                return 1;
+                return -1;
               }
           }
         else if ((size_t) nbytes == packet_size)
@@ -209,7 +209,7 @@ namespace velodyne_driver
     double time2 = ros::Time::now().toSec();
     pkt->stamp = ros::Time((time2 + time1) / 2.0 + time_offset);
 
-    return 0;
+    return 1;
   }
 
   ////////////////////////////////////////////////////////////////////////
@@ -312,7 +312,7 @@ namespace velodyne_driver
             memcpy(&pkt->data[0], pkt_data+42, packet_size);
             pkt->stamp = ros::Time::now(); // time_offset not considered here, as no synchronization required
             empty_ = false;
-            return 0;                   // success
+            return 1;                   // success
           }
 
         if (empty_)                 // no data in file?

@@ -354,8 +354,9 @@ bool VelodyneDriver::poll(void)
       {
           // keep reading until full packet received
           int rc = input_->getPacket(&scan->packets[i], config_.time_offset);
-          if (rc == 0) break;       // got a full packet?
+          if (rc == 1) break;       // got a full packet?
           if (rc < 0) return false; // end of file reached?
+          if (rc == 0) continue; // timeout?
       }
       // Automatic RPM detection logic pushed here.
       // got a packet here 
